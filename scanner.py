@@ -2,6 +2,7 @@ import os, re, math, json, sys
 from collections import Counter
 from datetime import datetime, timezone
 import git
+import hashlib
 
 PATTERNS = {
     "AWS Access Key ID": r"AKIA[0-9A-Z]{16}",
@@ -9,6 +10,7 @@ PATTERNS = {
     "Slack Webhook": r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+",
     "Generic Password Assignment": r"(?i)(password|passwd|pwd)\s*=\s*['\"]([^'\"]{6,})['\"]",
     "Private Key Header": r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----",
+    "Credential in URL (connection string)": r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s:/]+:[^\s@/]{6,}@[^\s/]+",
     "Generic API Key": r"(?i)(api[_-]?key|secret[_-]?key)\s*=\s*['\"]([A-Za-z0-9_\-]{16,})['\"]",
 }
 
@@ -32,7 +34,10 @@ def scan_text(text, source_label):
     findings = []
     for name, pattern in PATTERNS.items():
         for match in re.finditer(pattern, text):
-            findings.append({"type": name, "match": match.group(0)[:4] + "..." + match.group(0)[-4:] if len(match.group(0)) > 10 else "[REDACTED]",
+            full = match.group(0)
+            findings.append({"type": name,
+                              "match": full[:4] + "..." + full[-4:] if len(full) > 10 else "[REDACTED]",
+                              "fingerprint": hashlib.sha256(full.encode()).hexdigest()[:10],
                               "source": source_label, "method": "regex"})
     for secret, entropy in find_high_entropy_strings(text):
         findings.append({"type": "High-entropy string (possible secret)",
